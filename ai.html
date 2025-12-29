@@ -437,7 +437,7 @@
 
     // Initialize Gemini AI
     const genAI = new GoogleGenerativeAI('AIzaSyBHZ-_Z0RyNOUZrP5ZK7om6qvV_Fd5YjOU');
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // Chat history for context
     let chatHistory = [];
@@ -477,12 +477,28 @@ ${chatHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n')}
 
 User: ${message}`;
 
+        console.log('Sending request to Gemini API...');
         const result = await model.generateContent(systemPrompt);
+        console.log('Received response from Gemini API');
         const response = await result.response;
-        return response.text();
+        const text = response.text();
+        console.log('Response text:', text);
+        return text;
       } catch (error) {
-        console.error('Gemini API Error:', error);
-        return 'Sorry, I\'m having trouble connecting right now. Please try again in a moment.';
+        console.error('Gemini API Error Details:', error);
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+
+        // Provide more specific error messages
+        if (error.message.includes('API_KEY')) {
+          return 'API key error. Please check your Gemini API key configuration.';
+        } else if (error.message.includes('quota') || error.message.includes('limit')) {
+          return 'API quota exceeded. Please try again later.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          return 'Network error. Please check your internet connection.';
+        } else {
+          return `Sorry, I'm having trouble connecting right now. Error: ${error.message}`;
+        }
       }
     }
 
