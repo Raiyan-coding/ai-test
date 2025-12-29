@@ -8,7 +8,7 @@
   <script type="importmap">
     {
       "imports": {
-        "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        "openai": "https://esm.run/openai"
       }
     }
   </script>
@@ -427,17 +427,23 @@
     // Make toggleMenu global
     window.toggleMenu = toggleMenu;
 
-    // AI Chatbot Logic with Gemini
+    // AI Chatbot Logic with OpenRouter
     const chatMessages = document.getElementById('chatMessages');
     const userInput = document.getElementById('userInput');
     const typingIndicator = document.getElementById('typingIndicator');
 
-    // Import Gemini AI
-    import { GoogleGenerativeAI } from '@google/generative-ai';
+    // Import OpenAI SDK for OpenRouter
+    import OpenAI from 'openai';
 
-    // Initialize Gemini AI
-    const genAI = new GoogleGenerativeAI('AIzaSyBHZ-_Z0RyNOUZrP5ZK7om6qvV_Fd5YjOU');
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // Initialize OpenRouter with OpenAI SDK
+    const openai = new OpenAI({
+      baseURL: 'https://openrouter.ai/api/v1',
+      apiKey: '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',
+      defaultHeaders: {
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Ahoron AI - SSC Study Assistant',
+      },
+    });
 
     // Chat history for context
     let chatHistory = [];
@@ -459,10 +465,25 @@
       typingIndicator.style.display = 'none';
     }
 
-    async function getGeminiResponse(message) {
+    // Rate limiting for API
+    let lastRequestTime = 0;
+    const MIN_REQUEST_INTERVAL = 1000; // 1 second between requests
+
+    async function getOpenRouterResponse(message) {
+      // Rate limiting check
+      const now = Date.now();
+      if (now - lastRequestTime < MIN_REQUEST_INTERVAL) {
+        const waitTime = MIN_REQUEST_INTERVAL - (now - lastRequestTime);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+      lastRequestTime = Date.now();
+
       try {
-        // Create a system prompt for SSC study assistant
-        const systemPrompt = `You are Ahoron AI, an intelligent SSC (Secondary School Certificate) study assistant in Bangladesh. You help students with:
+        // Prepare messages for OpenRouter
+        const messages = [
+          {
+            role: 'system',
+            content: `You are Ahoron AI, an intelligent SSC (Secondary School Certificate) study assistant in Bangladesh. You help students with:
 
 - SSC subjects: Bangla, English, Mathematics, Physics, Chemistry, Biology, ICT, Religion, Social Science, Higher Mathematics
 - Study tips and exam preparation strategies
@@ -470,30 +491,40 @@
 - Career guidance related to SSC
 - General educational advice
 
-Always be helpful, encouraging, and provide accurate information. Keep responses concise but informative. If asked about non-SSC topics, gently redirect to SSC-related subjects.
+Always be helpful, encouraging, and provide accurate information. Keep responses concise but informative. If asked about non-SSC topics, gently redirect to SSC-related subjects.`
+          },
+          ...chatHistory.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })),
+          {
+            role: 'user',
+            content: message
+          }
+        ];
 
-Current conversation history:
-${chatHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n')}
+        console.log('Sending request to OpenRouter API...');
+        const completion = await openai.chat.completions.create({
+          model: 'openai/gpt-4o-mini', // Using GPT-4o mini for better performance and cost
+          messages: messages,
+          max_tokens: 1000,
+          temperature: 0.7,
+        });
 
-User: ${message}`;
-
-        console.log('Sending request to Gemini API...');
-        const result = await model.generateContent(systemPrompt);
-        console.log('Received response from Gemini API');
-        const response = await result.response;
-        const text = response.text();
-        console.log('Response text:', text);
-        return text;
+        console.log('Received response from OpenRouter API');
+        const response = completion.choices[0].message.content;
+        console.log('Response text:', response);
+        return response;
       } catch (error) {
-        console.error('Gemini API Error Details:', error);
+        console.error('OpenRouter API Error Details:', error);
         console.error('Error name:', error.name);
         console.error('Error message:', error.message);
 
         // Provide more specific error messages
-        if (error.message.includes('API_KEY')) {
-          return 'API key error. Please check your Gemini API key configuration.';
-        } else if (error.message.includes('quota') || error.message.includes('limit')) {
-          return 'API quota exceeded. Please try again later.';
+        if (error.message.includes('quota') || error.message.includes('limit') || error.message.includes('rate')) {
+          return 'API quota exceeded. Please check your OpenRouter account balance or try again later.';
+        } else if (error.message.includes('API_KEY') || error.message.includes('invalid') || error.message.includes('unauthorized')) {
+          return 'API key error. Please check your OpenRouter API key configuration.';
         } else if (error.message.includes('network') || error.message.includes('fetch')) {
           return 'Network error. Please check your internet connection.';
         } else {
@@ -521,7 +552,7 @@ User: ${message}`;
       showTyping();
 
       try {
-        const response = await getGeminiResponse(message);
+        const response = await getOpenRouterResponse(message);
 
         hideTyping();
 
